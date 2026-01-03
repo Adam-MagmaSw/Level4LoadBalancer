@@ -1,6 +1,7 @@
 ﻿using Level4LoadBalancer;
 using Level4LoadBalancer.Configuration;
-using Level4LoadBalancer.LoadBalancingStrategy;
+using Level4LoadBalancer.Healthchecking;
+using Level4LoadBalancer.LoadBalancing;
 using Level4LoadBalancer.Services;
 using Level4LoadBalancer.TcpAbstractions;
 using Microsoft.Extensions.Configuration;
@@ -33,6 +34,8 @@ builder.Services.AddSingleton<ITcpListenerFactory, TcpListenerFactory>();
 
 builder.Services.AddSingleton<IStreamCopier, StreamCopier>();
 builder.Services.AddSingleton<ILoadBalancingStrategy, RandomLoadBalancingStrategy>();
+builder.Services.AddSingleton<IBackendServerProxy, BackendServerProxy>();
+builder.Services.AddSingleton<IBackendServersHealthChecker, BackendServersHealthChecker>();
 
 builder.Services.AddHostedService<LoadBalancerService>();
 builder.Services.AddHostedService<BackendHealthcheckService>();

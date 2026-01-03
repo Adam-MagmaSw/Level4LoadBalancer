@@ -1,7 +1,7 @@
 ﻿using Level4LoadBalancer;
 using Level4LoadBalancer.Configuration;
 using Level4LoadBalancer.Healthchecking;
-using Level4LoadBalancer.LoadBalancingStrategy;
+using Level4LoadBalancer.LoadBalancing;
 using Level4LoadBalancer.Services;
 using Level4LoadBalancer.TcpAbstractions;
 using Microsoft.Extensions.Logging;
@@ -55,9 +55,11 @@ public class Level4LoadBalancerTests
             Substitute.For<ILogger<LoadBalancerService>>(),
             Options.Create(new LoadBalancerSettings { Port = 80 }),
             new TcpListenerFactory(),
-            new RandomLoadBalancingStrategy(register),
-            new TcpClientFactory(),
-            new StreamCopier());
+            new BackendServerProxy(
+                Substitute.For<ILogger<BackendServerProxy>>(),
+                new RandomLoadBalancingStrategy(register),
+                new TcpClientFactory(),
+                new StreamCopier()));
 
         this.loadBalancerService.StartAsync(this.cancellationTokenSource.Token);
 

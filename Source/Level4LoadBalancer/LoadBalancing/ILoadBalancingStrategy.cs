@@ -1,6 +1,6 @@
 ﻿using Level4LoadBalancer.Configuration;
 
-namespace Level4LoadBalancer.LoadBalancingStrategy;
+namespace Level4LoadBalancer.LoadBalancing;
 
 public interface ILoadBalancingStrategy
 {
