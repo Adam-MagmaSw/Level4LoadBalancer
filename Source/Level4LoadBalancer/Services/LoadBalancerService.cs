@@ -35,7 +35,7 @@ public class LoadBalancerService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        logger.LogInformation("LoadBalancerService is starting.");
+        this.logger.LogInformation("LoadBalancerService is starting.");
 
         try
         {
@@ -43,7 +43,7 @@ public class LoadBalancerService : BackgroundService
 
             while (!cancellationToken.IsCancellationRequested)
             {
-                logger.LogInformation("LoadBalancerService is running at: {time}", DateTimeOffset.Now);
+                this.logger.LogInformation("LoadBalancerService is running at: {time}", DateTimeOffset.Now);
 
                 var client = await tcpListener.AcceptTcpClientAsync(cancellationToken);
                 var _ = ProcessIncomingConnection(client, cancellationToken);
@@ -55,11 +55,11 @@ public class LoadBalancerService : BackgroundService
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "An error occurred in LoadBalancerService.");
+            this.logger.LogError(ex, "An error occurred in LoadBalancerService.");
         }
         finally
         {
-            logger.LogInformation("LoadBalancerService is stopping.");
+            this.logger.LogInformation("LoadBalancerService is stopping.");
         }
     }
 
@@ -71,7 +71,7 @@ public class LoadBalancerService : BackgroundService
 
             if (nextBackend is null)
             {
-                logger.LogError("No backend servers are available to handle the request.");
+                this.logger.LogError("No backend servers are available to handle the request.");
                 return;
             }
 
@@ -88,7 +88,7 @@ public class LoadBalancerService : BackgroundService
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "An error occurred in LoadBalancerService while processing incoming request.");
+            this.logger.LogError(ex, "An error occurred in LoadBalancerService while processing incoming request.");
         }
         finally
         {

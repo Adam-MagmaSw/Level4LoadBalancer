@@ -1,6 +1,4 @@
-﻿using System.Net;
-
-namespace Level4LoadBalancer.TcpAbstractions;
+﻿namespace Level4LoadBalancer.TcpAbstractions;
 
 public interface ITcpClientFacade : IDisposable
 {

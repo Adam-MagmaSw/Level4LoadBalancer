@@ -13,7 +13,11 @@ public class BackendHealthcheckService : BackgroundService
     private readonly IBackendServerRegister backendServerRegister;
     private readonly ITcpClientFactory tcpClientFactory;
 
-    public BackendHealthcheckService(ILogger<BackendHealthcheckService> logger, IOptions<HealthcheckSettings> healthcheckSettings, IBackendServerRegister backendServerRegister, ITcpClientFactory tcpClientFactory)
+    public BackendHealthcheckService(
+        ILogger<BackendHealthcheckService> logger,
+        IOptions<HealthcheckSettings> healthcheckSettings,
+        IBackendServerRegister backendServerRegister,
+        ITcpClientFactory tcpClientFactory)
     {
         this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
         this.healthcheckSettings = healthcheckSettings ?? throw new ArgumentNullException(nameof(healthcheckSettings));

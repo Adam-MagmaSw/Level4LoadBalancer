@@ -14,6 +14,7 @@ public class RandomLoadBalancingStrategy : ILoadBalancingStrategy
     public BackendServer? GetNextBackendServer()
     {
         var healthyBackendServers = this.healthyBackendServerRegister.GetAllHealthyBackendServers();
+
         if (healthyBackendServers.Count == 0)
         {
             return null;
