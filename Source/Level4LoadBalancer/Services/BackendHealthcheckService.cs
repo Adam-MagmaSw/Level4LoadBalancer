@@ -1,5 +1,5 @@
 using Level4LoadBalancer.Configuration;
-using Level4LoadBalancer.TcpAbstractions;
+using Level4LoadBalancer.Healthchecking;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -10,19 +10,16 @@ public class BackendHealthcheckService : BackgroundService
 {
     private readonly ILogger<BackendHealthcheckService> logger;
     private readonly IOptions<HealthcheckSettings> healthcheckSettings;
-    private readonly IBackendServerRegister backendServerRegister;
-    private readonly ITcpClientFactory tcpClientFactory;
+    private readonly IBackendServersHealthChecker backendServersHealthChecker;
 
     public BackendHealthcheckService(
         ILogger<BackendHealthcheckService> logger,
         IOptions<HealthcheckSettings> healthcheckSettings,
-        IBackendServerRegister backendServerRegister,
-        ITcpClientFactory tcpClientFactory)
+        IBackendServersHealthChecker backendServersHealthChecker)
     {
         this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
         this.healthcheckSettings = healthcheckSettings ?? throw new ArgumentNullException(nameof(healthcheckSettings));
-        this.backendServerRegister = backendServerRegister ?? throw new ArgumentNullException(nameof(backendServerRegister));
-        this.tcpClientFactory = tcpClientFactory ?? throw new ArgumentNullException(nameof(tcpClientFactory));
+        this.backendServersHealthChecker = backendServersHealthChecker ?? throw new ArgumentNullException(nameof(backendServersHealthChecker));
     }
 
     protected override async Task ExecuteAsync(CancellationToken cancellationToken)
@@ -33,7 +30,7 @@ public class BackendHealthcheckService : BackgroundService
         {
             this.logger.LogInformation("BackendHealthcheckService is running at: {time}", DateTimeOffset.Now);
 
-            await HealthcheckAllBackendServers(cancellationToken);
+            await this.backendServersHealthChecker.HealthcheckAllBackendServers(cancellationToken);
 
             try
             {
@@ -47,39 +44,5 @@ public class BackendHealthcheckService : BackgroundService
         }
 
         this.logger.LogInformation("BackendHealthcheckService is stopping.");
-    }
-
-    private async Task HealthcheckAllBackendServers(CancellationToken cancellationToken)
-    {
-        var backendServers = this.backendServerRegister.GetAllBackendServers();
-        var healthcheckTasks = backendServers.Select(backendServer => CheckBackendServerHealthAsync(backendServer, cancellationToken));
-        await Task.WhenAll(healthcheckTasks);
-    }
-
-    private async Task CheckBackendServerHealthAsync(BackendServer backendServer, CancellationToken cancellationToken)
-    {
-        var timeout = TimeSpan.FromMilliseconds(this.healthcheckSettings.Value.TimeoutMilliseconds);
-
-        try
-        {
-            using var client = await this.tcpClientFactory.CreateAndConnect(backendServer.Host, backendServer.Port, cancellationToken)
-                .WaitAsync(timeout, cancellationToken);
-
-            this.backendServerRegister.RecordBackendServerHealth(backendServer, true);
-            this.logger.LogInformation("{Host}:{Port} is healthy", backendServer.Host, backendServer.Port);
-        }
-        catch (TimeoutException ex)
-        {
-            this.backendServerRegister.RecordBackendServerHealth(backendServer, false);
-            this.logger.LogWarning(ex, "{Host}:{Port} timed out", backendServer.Host, backendServer.Port);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception)
-        {
-            this.backendServerRegister.RecordBackendServerHealth(backendServer, false);
-            this.logger.LogWarning("{Host}:{Port} is unhealthy.", backendServer.Host, backendServer.Port);
-        }
     }
 }

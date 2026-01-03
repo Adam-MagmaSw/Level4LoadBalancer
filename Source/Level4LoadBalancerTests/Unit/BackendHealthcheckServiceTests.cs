@@ -1,11 +1,9 @@
-﻿using Level4LoadBalancer;
-using Level4LoadBalancer.Configuration;
+﻿using Level4LoadBalancer.Configuration;
 using Level4LoadBalancer.Services;
-using Level4LoadBalancer.TcpAbstractions;
+using Level4LoadBalancer.Healthchecking;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using NSubstitute.ReceivedExtensions;
 
 namespace Level4LoadBalancerTests.Unit;
@@ -15,9 +13,7 @@ public class BackendHealthcheckServiceTests
 {
     private ILogger<BackendHealthcheckService> logger;
     private IOptions<HealthcheckSettings> healthcheckSettings;
-    private IBackendServerRegister backendServerRegister;
-    private ITcpClientFactory tcpClientFactory;
-    private BackendHealthcheckService service;
+    private IBackendServersHealthChecker backendServersHealthChecker;
 
     [SetUp]
     public void SetUp()
@@ -28,234 +24,132 @@ public class BackendHealthcheckServiceTests
             IntervalSeconds = 1,
             TimeoutMilliseconds = 1000
         });
-        backendServerRegister = Substitute.For<IBackendServerRegister>();
-        tcpClientFactory = Substitute.For<ITcpClientFactory>();
-        service = new BackendHealthcheckService(logger, healthcheckSettings, backendServerRegister, tcpClientFactory);
-    }
-
-    [TearDown]
-    public void TearDown()
-    {
-        service?.Dispose();
+        backendServersHealthChecker = Substitute.For<IBackendServersHealthChecker>();
     }
 
     [Test]
     public void Constructor_WithNullLogger_ThrowsArgumentNullException()
     {
-        Assert.Throws<ArgumentNullException>(() =>
-            new BackendHealthcheckService(null!, healthcheckSettings, backendServerRegister, tcpClientFactory));
+        Assert.Throws<ArgumentNullException>(() => 
+            new BackendHealthcheckService(null!, healthcheckSettings, backendServersHealthChecker));
     }
 
     [Test]
     public void Constructor_WithNullHealthcheckSettings_ThrowsArgumentNullException()
     {
-        Assert.Throws<ArgumentNullException>(() =>
-            new BackendHealthcheckService(logger, null!, backendServerRegister, tcpClientFactory));
+        Assert.Throws<ArgumentNullException>(() => 
+            new BackendHealthcheckService(logger, null!, backendServersHealthChecker));
     }
 
     [Test]
-    public void Constructor_WithNullBackendServerRegister_ThrowsArgumentNullException()
+    public void Constructor_WithNullBackendServersHealthChecker_ThrowsArgumentNullException()
     {
-        Assert.Throws<ArgumentNullException>(() =>
-            new BackendHealthcheckService(logger, healthcheckSettings, null!, tcpClientFactory));
+        Assert.Throws<ArgumentNullException>(() => 
+            new BackendHealthcheckService(logger, healthcheckSettings, null!));
     }
 
     [Test]
-    public void Constructor_WithNullTcpClientFactory_ThrowsArgumentNullException()
+    public void Constructor_WithValidParameters_CreatesInstance()
     {
-        Assert.Throws<ArgumentNullException>(() =>
-            new BackendHealthcheckService(logger, healthcheckSettings, backendServerRegister, null!));
+        var service = new BackendHealthcheckService(logger, healthcheckSettings, backendServersHealthChecker);
+
+        Assert.That(service, Is.Not.Null);
     }
 
     [Test]
-    public async Task ExecuteAsync_WithHealthyBackendServer_RecordsHealthyStatus()
+    public async Task ExecuteAsync_CallsHealthcheckAllBackendServersAtLeastOnce()
     {
-        var backendServer = new BackendServer { Host = "localhost", Port = 8001 };
-        backendServerRegister.GetAllBackendServers().Returns(new[] { backendServer });
-
-        var mockClient = Substitute.For<ITcpClientFacade>();
-        tcpClientFactory.CreateAndConnect(backendServer.Host, backendServer.Port, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(mockClient));
-
+        var service = new BackendHealthcheckService(logger, healthcheckSettings, backendServersHealthChecker);
         var cts = new CancellationTokenSource();
-        var executeTask = service.StartAsync(cts.Token);
 
+        backendServersHealthChecker.HealthcheckAllBackendServers(Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask)
+            .AndDoes(_ => cts.Cancel());
+
+        await service.StartAsync(cts.Token);
         await Task.Delay(100);
-        cts.Cancel();
+        await service.StopAsync(CancellationToken.None);
 
-        await executeTask;
-
-        backendServerRegister.Received().RecordBackendServerHealth(backendServer, true);
+        await backendServersHealthChecker.Received(1).HealthcheckAllBackendServers(Arg.Any<CancellationToken>());
     }
 
     [Test]
-    public async Task ExecuteAsync_WithUnhealthyBackendServer_RecordsUnhealthyStatus()
+    public async Task ExecuteAsync_CallsHealthcheckMultipleTimes_WhenIntervalPasses()
     {
-        var backendServer = new BackendServer { Host = "localhost", Port = 8001 };
-        backendServerRegister.GetAllBackendServers().Returns(new[] { backendServer });
-
-        tcpClientFactory.CreateAndConnect(backendServer.Host, backendServer.Port, Arg.Any<CancellationToken>())
-            .Throws(new Exception("Connection failed"));
-
-        var cts = new CancellationTokenSource();
-        var executeTask = service.StartAsync(cts.Token);
-
-        await Task.Delay(100);
-        cts.Cancel();
-
-        await executeTask;
-
-        backendServerRegister.Received().RecordBackendServerHealth(backendServer, false);
-    }
-
-    [Test]
-    public async Task ExecuteAsync_WithTimeoutException_RecordsUnhealthyStatus()
-    {
-        var backendServer = new BackendServer { Host = "localhost", Port = 8001 };
-        backendServerRegister.GetAllBackendServers().Returns(new[] { backendServer });
-
-        tcpClientFactory.CreateAndConnect(backendServer.Host, backendServer.Port, Arg.Any<CancellationToken>())
-            .Throws(new TimeoutException("Connection timed out"));
-
-        var cts = new CancellationTokenSource();
-        var executeTask = service.StartAsync(cts.Token);
-
-        await Task.Delay(100);
-        cts.Cancel();
-
-        await executeTask;
-
-        backendServerRegister.Received().RecordBackendServerHealth(backendServer, false);
-    }
-
-    [Test]
-    public async Task ExecuteAsync_WithMultipleBackendServers_ChecksAllServers()
-    {
-        var server1 = new BackendServer { Host = "localhost", Port = 8001 };
-        var server2 = new BackendServer { Host = "localhost", Port = 8002 };
-        var server3 = new BackendServer { Host = "localhost", Port = 8003 };
-        backendServerRegister.GetAllBackendServers().Returns(new[] { server1, server2, server3 });
-
-        var mockClient1 = Substitute.For<ITcpClientFacade>();
-        var mockClient2 = Substitute.For<ITcpClientFacade>();
-        tcpClientFactory.CreateAndConnect(server1.Host, server1.Port, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(mockClient1));
-        tcpClientFactory.CreateAndConnect(server2.Host, server2.Port, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(mockClient2));
-        tcpClientFactory.CreateAndConnect(server3.Host, server3.Port, Arg.Any<CancellationToken>())
-            .Throws(new Exception("Connection failed"));
-
-        var cts = new CancellationTokenSource();
-        var executeTask = service.StartAsync(cts.Token);
-
-        await Task.Delay(100);
-        cts.Cancel();
-
-        await executeTask;
-
-        backendServerRegister.Received().RecordBackendServerHealth(server1, true);
-        backendServerRegister.Received().RecordBackendServerHealth(server2, true);
-        backendServerRegister.Received().RecordBackendServerHealth(server3, false);
-    }
-
-    [Test]
-    public async Task ExecuteAsync_WithOperationCanceledException_DoesNotRecordHealth()
-    {
-        var backendServer = new BackendServer { Host = "localhost", Port = 8001 };
-        backendServerRegister.GetAllBackendServers().Returns(new[] { backendServer });
-
-        tcpClientFactory.CreateAndConnect(backendServer.Host, backendServer.Port, Arg.Any<CancellationToken>())
-            .Throws(new OperationCanceledException());
-
-        var cts = new CancellationTokenSource();
-        var executeTask = service.StartAsync(cts.Token);
-
-        await Task.Delay(100);
-        cts.Cancel();
-
-        await executeTask;
-
-        backendServerRegister.DidNotReceive().RecordBackendServerHealth(backendServer, Arg.Any<bool>());
-    }
-
-    [Test]
-    public async Task ExecuteAsync_WithNoBackendServers_CompletesWithoutError()
-    {
-        backendServerRegister.GetAllBackendServers().Returns(Array.Empty<BackendServer>());
-
-        var cts = new CancellationTokenSource();
-        var executeTask = service.StartAsync(cts.Token);
-
-        await Task.Delay(100);
-        cts.Cancel();
-
-        await executeTask;
-
-        backendServerRegister.DidNotReceive().RecordBackendServerHealth(Arg.Any<BackendServer>(), Arg.Any<bool>());
-    }
-
-    [Test]
-    public async Task ExecuteAsync_CancellationRequested_StopsGracefully()
-    {
-        backendServerRegister.GetAllBackendServers().Returns(Array.Empty<BackendServer>());
-
-        var cts = new CancellationTokenSource();
-        var executeTask = service.StartAsync(cts.Token);
-
-        await Task.Delay(50);
-        cts.Cancel();
-
-        await executeTask;
-
-        Assert.Pass();
-    }
-
-    [Test]
-    public async Task ExecuteAsync_RunsMultipleTimes_ChecksHealthMultipleTimes()
-    {
-        var backendServer = new BackendServer { Host = "localhost", Port = 8001 };
-        backendServerRegister.GetAllBackendServers().Returns(new[] { backendServer });
-
-        var mockClient = Substitute.For<ITcpClientFacade>();
-        tcpClientFactory.CreateAndConnect(backendServer.Host, backendServer.Port, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(mockClient));
-
         var shortIntervalSettings = Options.Create(new HealthcheckSettings
+        {
+            IntervalSeconds = 0,
+            TimeoutMilliseconds = 1000
+        });
+        var service = new BackendHealthcheckService(logger, shortIntervalSettings, backendServersHealthChecker);
+        var cts = new CancellationTokenSource();
+
+        var callCount = 0;
+        backendServersHealthChecker.HealthcheckAllBackendServers(Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask)
+            .AndDoes(_ =>
+            {
+                callCount++;
+                if (callCount >= 3)
+                {
+                    cts.Cancel();
+                }
+            });
+
+        await service.StartAsync(cts.Token);
+        await Task.Delay(200);
+        await service.StopAsync(CancellationToken.None);
+
+        await backendServersHealthChecker.Received(3).HealthcheckAllBackendServers(Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task ExecuteAsync_RespectsIntervalSeconds_BetweenHealthchecks()
+    {
+        var intervalSettings = Options.Create(new HealthcheckSettings
         {
             IntervalSeconds = 1,
             TimeoutMilliseconds = 1000
         });
-        var shortIntervalService = new BackendHealthcheckService(logger, shortIntervalSettings, backendServerRegister, tcpClientFactory);
-
+        var service = new BackendHealthcheckService(logger, intervalSettings, backendServersHealthChecker);
         var cts = new CancellationTokenSource();
-        var executeTask = shortIntervalService.StartAsync(cts.Token);
 
-        await Task.Delay(2000);
-        cts.Cancel();
+        var callTimes = new List<DateTime>();
+        backendServersHealthChecker.HealthcheckAllBackendServers(Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask)
+            .AndDoes(_ =>
+            {
+                callTimes.Add(DateTime.UtcNow);
+                if (callTimes.Count >= 2)
+                {
+                    cts.Cancel();
+                }
+            });
 
-        await executeTask;
+        await service.StartAsync(cts.Token);
+        await Task.Delay(2500);
+        await service.StopAsync(CancellationToken.None);
 
-        backendServerRegister.Received(Quantity.Within(2, 10)).RecordBackendServerHealth(backendServer, true);
+        Assert.That(callTimes, Has.Count.GreaterThanOrEqualTo(2));
+        var timeDifference = (callTimes[1] - callTimes[0]).TotalSeconds;
+        Assert.That(timeDifference, Is.GreaterThanOrEqualTo(0.9).And.LessThan(1.5));
     }
 
     [Test]
-    public async Task ExecuteAsync_DisposesClientAfterCheck()
+    public async Task ExecuteAsync_StopsGracefully_WhenCancellationRequested()
     {
-        var backendServer = new BackendServer { Host = "localhost", Port = 8001 };
-        backendServerRegister.GetAllBackendServers().Returns(new[] { backendServer });
-
-        var mockClient = Substitute.For<ITcpClientFacade>();
-        tcpClientFactory.CreateAndConnect(backendServer.Host, backendServer.Port, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(mockClient));
-
+        var service = new BackendHealthcheckService(logger, healthcheckSettings, backendServersHealthChecker);
         var cts = new CancellationTokenSource();
-        var executeTask = service.StartAsync(cts.Token);
 
-        await Task.Delay(100);
+        backendServersHealthChecker.HealthcheckAllBackendServers(Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        await service.StartAsync(cts.Token);
+        await Task.Delay(50);
         cts.Cancel();
+        await Task.Delay(50);
+        await service.StopAsync(CancellationToken.None);
 
-        await executeTask;
-
-        mockClient.Received(1).Dispose();
+        logger.Received().LogInformation("BackendHealthcheckService is stopping.");
     }
 }

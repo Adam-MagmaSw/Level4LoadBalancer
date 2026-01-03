@@ -1,5 +1,6 @@
 ﻿using Level4LoadBalancer;
 using Level4LoadBalancer.Configuration;
+using Level4LoadBalancer.Healthchecking;
 using Level4LoadBalancer.LoadBalancingStrategy;
 using Level4LoadBalancer.Services;
 using Level4LoadBalancer.TcpAbstractions;
@@ -22,6 +23,7 @@ public class Level4LoadBalancerTests
     private Task backEndServer2task;
     private Task backEndServer3task;
     private LoadBalancerService loadBalancerService;
+    private BackendServersHealthChecker backendServersHealthchecker;
     private BackendHealthcheckService healthCheckService;
     private ConcurrentStack<string> receivedResponses;
 
@@ -45,9 +47,9 @@ public class Level4LoadBalancerTests
             new BackendServer { Host = "localhost", Port = 8081 },
             new BackendServer { Host = "localhost", Port = 8082 }
         };
-        var options = Options.Create(backendServers);
+        var backendServersOptions = Options.Create(backendServers);
 
-        var register = new BackendServerRegister(options);
+        var register = new BackendServerRegister(backendServersOptions);
 
         this.loadBalancerService = new LoadBalancerService(
             Substitute.For<ILogger<LoadBalancerService>>(),
@@ -59,11 +61,22 @@ public class Level4LoadBalancerTests
 
         this.loadBalancerService.StartAsync(this.cancellationTokenSource.Token);
 
-        this.healthCheckService = new BackendHealthcheckService(
-            Substitute.For<ILogger<BackendHealthcheckService>>(),
-            Options.Create(new HealthcheckSettings { IntervalSeconds = 1, TimeoutMilliseconds = 50 }),
+        var healthcheckSettings = Options.Create(new HealthcheckSettings
+        {
+            IntervalSeconds = 1,
+            TimeoutMilliseconds = 50
+        });
+
+        this.backendServersHealthchecker = new BackendServersHealthChecker(
+            Substitute.For<ILogger<BackendServersHealthChecker>>(),
+            healthcheckSettings,
             register,
             new TcpClientFactory());
+
+        this.healthCheckService = new BackendHealthcheckService(
+            Substitute.For<ILogger<BackendHealthcheckService>>(),
+            healthcheckSettings,
+            this.backendServersHealthchecker);
 
         this.healthCheckService.StartAsync(this.cancellationTokenSource.Token);
     }
