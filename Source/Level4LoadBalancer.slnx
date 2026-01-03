@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Level4LoadBalancer/Level4LoadBalancer.csproj" />
+  <Project Path="Level4LoadBalancerTests/Level4LoadBalancerTests.csproj" />
+</Solution>
