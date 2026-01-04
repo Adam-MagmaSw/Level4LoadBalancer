@@ -199,7 +199,7 @@ public class BackendServersHealthCheckerTests
         var customSettings = Options.Create(new HealthcheckSettings
         {
             IntervalSeconds = 10,
-            TimeoutMilliseconds = 5000
+            TimeoutMilliseconds = 5
         });
         var server = new BackendServer { Host = "localhost", Port = 8001 };
         backendServerRegister.GetAllBackendServers().Returns(new[] { server });
@@ -209,14 +209,8 @@ public class BackendServersHealthCheckerTests
             .Returns(tcs.Task);
 
         var healthChecker = new BackendServersHealthChecker(logger, customSettings, backendServerRegister, tcpClientFactory);
-
-        var healthCheckTask = healthChecker.HealthcheckAllBackendServers(CancellationToken.None);
-        await Task.Delay(100);
-
-        Assert.That(healthCheckTask.IsCompleted, Is.False);
-
-        tcs.SetException(new TimeoutException());
-        await healthCheckTask;
+        var _ = healthChecker.HealthcheckAllBackendServers(CancellationToken.None);
+        await Task.Delay(50);
 
         backendServerRegister.Received(1).RecordBackendServerHealth(server, false);
     }
