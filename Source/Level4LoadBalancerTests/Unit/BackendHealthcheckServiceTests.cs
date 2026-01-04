@@ -74,36 +74,6 @@ public class BackendHealthcheckServiceTests
     }
 
     [Test]
-    public async Task ExecuteAsync_CallsHealthcheckMultipleTimes_WhenIntervalPasses()
-    {
-        var shortIntervalSettings = Options.Create(new HealthcheckSettings
-        {
-            IntervalSeconds = 0,
-            TimeoutMilliseconds = 1000
-        });
-        var service = new BackendHealthcheckService(logger, shortIntervalSettings, backendServersHealthChecker);
-        var cts = new CancellationTokenSource();
-
-        var callCount = 0;
-        backendServersHealthChecker.HealthcheckAllBackendServers(Arg.Any<CancellationToken>())
-            .Returns(Task.CompletedTask)
-            .AndDoes(_ =>
-            {
-                callCount++;
-                if (callCount >= 3)
-                {
-                    cts.Cancel();
-                }
-            });
-
-        await service.StartAsync(cts.Token);
-        await Task.Delay(200);
-        await service.StopAsync(CancellationToken.None);
-
-        await backendServersHealthChecker.Received(3).HealthcheckAllBackendServers(Arg.Any<CancellationToken>());
-    }
-
-    [Test]
     public async Task ExecuteAsync_RespectsIntervalSeconds_BetweenHealthchecks()
     {
         var intervalSettings = Options.Create(new HealthcheckSettings

@@ -56,10 +56,8 @@ public class BackendServerRegisterTests
         var register = new BackendServerRegister(options);
         register.RecordBackendServerHealth(backendServers[0], false);
 
-        // Act
         var result = register.GetAllBackendServers().ToList();
 
-        // Assert
         Assert.That(result, Has.Count.EqualTo(2));
         Assert.That(result, Is.EquivalentTo(backendServers));
     }
@@ -88,7 +86,6 @@ public class BackendServerRegisterTests
     [Test]
     public void RecordBackendServerHealth_MarkUnhealthyServerAsHealthy_AddsBackToHealthyList()
     {
-        // Arrange
         var server = new BackendServer { Host = "localhost", Port = 8001 };
         var backendServers = new List<BackendServer> { server };
         var options = Options.Create(backendServers);
@@ -97,10 +94,8 @@ public class BackendServerRegisterTests
         register.RecordBackendServerHealth(server, false);
         Assert.That(register.GetAllHealthyBackendServers(), Is.Empty);
 
-        // Act
         register.RecordBackendServerHealth(server, true);
 
-        // Assert
         var healthyServers = register.GetAllHealthyBackendServers();
         Assert.That(healthyServers, Has.Count.EqualTo(1));
         Assert.That(healthyServers[0], Is.EqualTo(server));
