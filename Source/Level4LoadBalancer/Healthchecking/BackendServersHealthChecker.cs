@@ -51,10 +51,10 @@ public class BackendServersHealthChecker : IBackendServersHealthChecker
         catch (OperationCanceledException)
         {
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             this.backendServerRegister.RecordBackendServerHealth(backendServer, false);
-            this.logger.LogWarning("{Host}:{Port} is unhealthy.", backendServer.Host, backendServer.Port);
+            this.logger.LogWarning(ex, "{Host}:{Port} is unhealthy.", backendServer.Host, backendServer.Port);
         }
     }
 }

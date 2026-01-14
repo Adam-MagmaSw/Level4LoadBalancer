@@ -7,7 +7,7 @@ internal class SimpleWebServer
 {
     private readonly byte[] responseBuffer;
     private readonly int port;
-    private HttpListener listener;
+    private readonly HttpListener listener;
 
     public SimpleWebServer(int port, string response)
     {
